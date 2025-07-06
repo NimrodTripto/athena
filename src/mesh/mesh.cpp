@@ -1625,18 +1625,22 @@ void Mesh::Initialize(int res_flag, ParameterInput *pin) {
     if (pid == "tde") {
       // 1) check_place  
       bool do_check = pin->GetOrAddBoolean("stream","check_place",false);
-      std::cout << "Checking place" << std::endl;
+      // std::cout << "Checking place" << std::endl;
       if (do_check) {
 
         CheckPlace(this, pin);
       }
-      // // 2) temperature rescaling to preserve P_gas + prat/3·T⁴
-      // Real prat = pin->GetReal("radiation","prat");
-      // for (int b = 0; b < nblocal; ++b) {
-      //   auto *pmb = my_blocks(b);
-      //   Real gm1 = pmb->peos->GetGamma() - 1.0;
-      //   RescaleThermalAndRadiation(pmb->phydro, pmb->pfield, pmb->pnrrad, prat, gm1);
-      // }
+      // 2) temperature rescaling to preserve P_gas + prat/3·T⁴
+      Real prat = pin->GetReal("radiation","prat");
+      for (int b = 0; b < nblocal; ++b) {
+        auto *pmb = my_blocks(b);
+        Real gm1 = pmb->peos->GetGamma() - 1.0;
+        // take from input problem/rescale_temp_press for the if
+        bool do_rescale = pin->GetOrAddBoolean("problem", "rescale_temp_press", false);
+        if (do_rescale) {
+          RescaleThermalAndRadiation(pmb->phydro, pmb->pfield, pmb->pnrrad, prat, gm1);
+        }
+      }
     }
   }
 
@@ -2367,8 +2371,14 @@ void RescaleThermalAndRadiation(Hydro *ph, Field *pf, NRRadiation *rad,
         Real rho = ph->w(IDN, k, j, i);
         Real P1  = ph->w(IPR, k, j, i);
         Real T1  = P1 / rho;
-        Real I0_old = rad->ir(k, j, i, 0);
-        Real Trad1_4 = I0_old;
+        // Compute Er4_old as the weighted sum over all angles and frequencies
+        Real Er4_old = 0.0;
+        for (int f = 0; f < rad->nfreq; ++f) {
+          for (int n = 0; n < rad->nang; ++n) {
+            Er4_old += rad->wmu(n) * rad->ir(k, j, i, f * rad->nang + n);
+          }
+        }
+        Real Trad1_4 = (3.0 / prat) * Er4_old;
         Real Ptot = rho * T1 + (prat / 3.0) * Trad1_4;
         Real T2 = T1;
         for (int it = 0; it < 12; ++it) {
@@ -2396,9 +2406,9 @@ void RescaleThermalAndRadiation(Hydro *ph, Field *pf, NRRadiation *rad,
         ph->u(IEN, k, j, i) = IE_new + KE + ME;
         Real scale_rad = std::pow(T2, 4) / Trad1_4;
         int Nbin = rad->nfreq * rad->nang;
-        for (int n = 0; n < Nbin; ++n) {
-          rad->ir(k, j, i, n) *= scale_rad;
-        }
+        // for (int n = 0; n < Nbin; ++n) {
+        //   rad->ir(k, j, i, n) *= scale_rad;
+        // }
       }
     }
   }

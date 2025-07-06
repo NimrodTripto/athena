@@ -10,7 +10,7 @@
 //!
 //! The Mesh is the overall grid structure, and MeshBlocks are local patches of data
 //! (potentially on different levels) that tile the entire domain.
-
+//
 // C headers
 
 // C++ headers
@@ -64,6 +64,23 @@ class PassiveScalars;
 class NRRadiation;
 class IMRadiation;
 class TurbulenceDriver;
+
+// Forward declarations for utility routines and types used in them
+typedef double Real;
+
+class Mesh;
+class ParameterInput;
+class Hydro;
+class Field;
+class NRRadiation;
+
+/// Rescale gas temperature, internal energy, and radiation intensities
+/// so that P_gas + (prat/3) T⁴ is conserved.
+void RescaleThermalAndRadiation(Hydro *ph, Field *pf, NRRadiation *rad,
+                                Real prat, Real gm1);
+
+/// Snap a source location to the grid (check_place logic)
+void CheckPlace(Mesh *mesh, ParameterInput *pin);
 
 FluidFormulation GetFluidFormulation(const std::string& input_string);
 

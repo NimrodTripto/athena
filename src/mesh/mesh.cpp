@@ -57,6 +57,7 @@
 #include "../scalars/scalars.hpp"
 #include "../units/units.hpp"
 #include "../utils/buffer_utils.hpp"
+#include "../pgen/pgenphys.hpp"   // for Problem::SnapToGrid, Problem::SnapResult
 #include "mesh.hpp"
 #include "mesh_refinement.hpp"
 #include "meshblock_tree.hpp"
@@ -65,6 +66,9 @@
 #ifdef MPI_PARALLEL
 #include <mpi.h>
 #endif
+
+// Forward declaration for utility
+void CheckPlace(Mesh *mesh, ParameterInput *pin);
 
 //----------------------------------------------------------------------------------------
 //! Mesh constructor, builds mesh at start of calculation using parameters in input file
@@ -344,7 +348,7 @@ Mesh::Mesh(ParameterInput *pin, int mesh_test) :
           << "The size of MeshBlock must be divisible by 2 in order to use SMR or AMR."
           << std::endl;
       ATHENA_ERROR(msg);
-    }
+    } //
 
     InputBlock *pib = pin->pfirst_block;
     while (pib != nullptr) {
@@ -527,6 +531,39 @@ Mesh::Mesh(ParameterInput *pin, int mesh_test) :
 
   CalculateLoadBalance(costlist, ranklist, nslist, nblist, nbtotal);
 
+  // Add diagnostic output for block distribution
+  // int me = Globals::my_rank;
+  // std::ostringstream diag_ss;
+  // diag_ss << "Rank " << me << ": nblocal = " << nblist[me]
+  //    << ", gids = " << nslist[me]
+  //    << " … " << (nslist[me] + nblist[me] - 1) << std::endl;
+  // std::cout << diag_ss.str();
+
+#ifdef MPI_PARALLEL
+  MPI_Barrier(MPI_COMM_WORLD);
+#endif
+
+  // Verify invariants after load balance
+#ifdef MPI_PARALLEL
+  int bad = 0;
+  for (int r = 0; r < Globals::nranks; ++r)
+    if (nblist[r] < 0) bad = 1;
+
+  int sum = 0;
+  for (int r = 0; r < Globals::nranks; ++r) sum += nblist[r];
+
+  if (sum != nbtotal) bad = 1;
+  if (bad) {
+    std::ostringstream msg;
+    msg << "### FATAL ERROR in Mesh constructor" << std::endl
+        << "Broken nslist/nblist after load-balance" << std::endl
+        << "  sum(nblist) = " << sum << ", nbtotal = " << nbtotal
+        << ", nblist[my_rank] = " << nblist[Globals::my_rank]
+        << ", nslist[my_rank] = " << nslist[Globals::my_rank] << std::endl;
+    ATHENA_ERROR(msg);
+  }
+#endif
+
   // Output some diagnostic information to terminal
 
   // Output MeshBlock list and quit (mesh test only); do not create meshes
@@ -554,13 +591,20 @@ Mesh::Mesh(ParameterInput *pin, int mesh_test) :
   gids_ = nslist[Globals::my_rank];
   gide_ = gids_ + nblist[Globals::my_rank] - 1;
   nblocal = nblist[Globals::my_rank];
-  my_blocks.NewAthenaArray(nblocal);
-  // create MeshBlocks for this node
-  for (int i=gids_; i<=gide_; i++) {
-    SetBlockSizeAndBoundaries(loclist[i], block_size, block_bcs);
-    my_blocks(i-gids_) = new MeshBlock(i, i-gids_, loclist[i], block_size, block_bcs,
-                                       this, pin);
-    my_blocks(i-gids_)->pbval->SearchAndSetNeighbors(tree, ranklist, nslist);
+  if (nblocal > 0) {
+    my_blocks.NewAthenaArray(nblocal);
+    // create MeshBlocks for this node
+    for (int i=gids_; i<=gide_; i++) {
+      // std::cout<<"Rank "<<me<<": [BLOCK] about to SetBoundaries for global block "<<i<<"\n";
+      SetBlockSizeAndBoundaries(loclist[i], block_size, block_bcs);
+      // std::cout<<"Rank "<<me<<": [BLOCK] about to new MeshBlock(global="<<i<<", local="<<i-gids_<<")\n";
+      my_blocks(i-gids_) = new MeshBlock(i, i-gids_, loclist[i], block_size, block_bcs,
+                                         this, pin);
+      // std::cout<<"Rank "<<me<<": [BLOCK] constructed MeshBlock "<<i<<"\n";
+      // std::cout<<"Rank "<<me<<": [BLOCK] about to SearchAndSetNeighbors for block "<<i<<"\n";
+      my_blocks(i-gids_)->pbval->SearchAndSetNeighbors(tree, ranklist, nslist);
+      // std::cout<<"Rank "<<me<<": [BLOCK] done SearchAndSetNeighbors for block "<<i<<"\n";
+    }
   }
 
   ResetLoadBalanceVariables();
@@ -864,6 +908,41 @@ Mesh::Mesh(ParameterInput *pin, IOWrapper& resfile, int mesh_test) :
   }
 
   CalculateLoadBalance(costlist, ranklist, nslist, nblist, nbtotal);
+
+  // Add diagnostic output for block distribution
+  int me = Globals::my_rank;
+  // std::ostringstream diag_ss;
+  // diag_ss << "Rank " << me << ": nblocal = " << nblist[me]
+  //    << ", gids = " << nslist[me]
+  //    << " … " << (nslist[me] + nblist[me] - 1) << std::endl;
+  // std::cout << diag_ss.str();
+
+#ifdef MPI_PARALLEL
+  MPI_Barrier(MPI_COMM_WORLD);
+#endif
+
+  // Verify invariants after load balance
+#ifdef MPI_PARALLEL
+  int bad = 0;
+  for (int r = 0; r < Globals::nranks; ++r)
+    if (nblist[r] < 0) bad = 1;
+
+  int sum = 0;
+  for (int r = 0; r < Globals::nranks; ++r) sum += nblist[r];
+
+  if (sum != nbtotal) bad = 1;
+  if (bad) {
+    std::ostringstream msg;
+    msg << "### FATAL ERROR in Mesh constructor" << std::endl
+        << "Broken nslist/nblist after load-balance" << std::endl
+        << "  sum(nblist) = " << sum << ", nbtotal = " << nbtotal
+        << ", nblist[my_rank] = " << nblist[Globals::my_rank]
+        << ", nslist[my_rank] = " << nslist[Globals::my_rank] << std::endl;
+    ATHENA_ERROR(msg);
+  }
+#endif
+
+  // Output some diagnostic information to terminal
 
   // Output MeshBlock list and quit (mesh test only); do not create meshes
   if (mesh_test > 0) {
@@ -1184,6 +1263,17 @@ void Mesh::NewTimeStep() {
       dt = sts_max_dt_ratio * dt_parabolic;
     }
   }
+
+  // // Print which timestep type is the minimal one
+  // if (dt == dt_hyperbolic) {
+  //   std::cout << "Minimal timestep is hyperbolic: " << dt << std::endl;
+  // } else if (dt == dt_parabolic) {
+  //   std::cout << "Minimal timestep is parabolic: " << dt << std::endl;
+  // } else if (dt == dt_user) {
+  //   std::cout << "Minimal timestep is user-defined: " << dt << std::endl;
+  // } else {
+  //   std::cout << "Minimal timestep is from endpoint limit: " << dt << std::endl;
+  // }
 
   return;
 }
@@ -1527,6 +1617,29 @@ void Mesh::ApplyUserWorkBeforeOutput(ParameterInput *pin) {
 //! \brief  initialization before the main loop
 
 void Mesh::Initialize(int res_flag, ParameterInput *pin) {
+  //----------------------------------------------------------------------//
+  // problem-specific restart hook: only for problem.id=="tde"           //
+  //----------------------------------------------------------------------//
+  if (res_flag != 0) {  // we are restarting
+    std::string pid = pin->GetOrAddString("job","problem_id","none");
+    if (pid == "tde") {
+      // 1) check_place  
+      bool do_check = pin->GetOrAddBoolean("stream","check_place",false);
+      std::cout << "Checking place" << std::endl;
+      if (do_check) {
+
+        CheckPlace(this, pin);
+      }
+      // // 2) temperature rescaling to preserve P_gas + prat/3·T⁴
+      // Real prat = pin->GetReal("radiation","prat");
+      // for (int b = 0; b < nblocal; ++b) {
+      //   auto *pmb = my_blocks(b);
+      //   Real gm1 = pmb->peos->GetGamma() - 1.0;
+      //   RescaleThermalAndRadiation(pmb->phydro, pmb->pfield, pmb->pnrrad, prat, gm1);
+      // }
+    }
+  }
+
   bool iflag = true;
   int inb = nbtotal;
   int nthreads = GetNumMeshThreads();
@@ -1626,6 +1739,8 @@ void Mesh::Initialize(int res_flag, ParameterInput *pin) {
 #pragma omp for private(pmb,pbval)
       for (int i=0; i<nblocal; ++i) {
         pmb = my_blocks(i); pbval = pmb->pbval;
+        pmb->phydro->hbvar.SwapHydroQuantity(pmb->phydro->u,
+                                               HydroBoundaryQuantity::cons);
         pmb->phydro->hbvar.ReceiveAndSetBoundariesWithWait();
         if (MAGNETIC_FIELDS_ENABLED)
           pmb->pfield->fbvar.ReceiveAndSetBoundariesWithWait();
@@ -2238,4 +2353,68 @@ void Mesh::OutputCycleDiagnostics() {
     }
   }
   return;
+}
+
+// Utility function: RescaleThermalAndRadiation
+void RescaleThermalAndRadiation(Hydro *ph, Field *pf, NRRadiation *rad,
+                                Real prat, Real gm1) {
+  int is = ph->pmy_block->is, ie = ph->pmy_block->ie;
+  int js = ph->pmy_block->js, je = ph->pmy_block->je;
+  int ks = ph->pmy_block->ks, ke = ph->pmy_block->ke;
+  for (int k = ks; k <= ke; ++k) {
+    for (int j = js; j <= je; ++j) {
+      for (int i = is; i <= ie; ++i) {
+        Real rho = ph->w(IDN, k, j, i);
+        Real P1  = ph->w(IPR, k, j, i);
+        Real T1  = P1 / rho;
+        Real I0_old = rad->ir(k, j, i, 0);
+        Real Trad1_4 = I0_old;
+        Real Ptot = rho * T1 + (prat / 3.0) * Trad1_4;
+        Real T2 = T1;
+        for (int it = 0; it < 12; ++it) {
+          Real f = rho * T2 + (prat / 3.0) * std::pow(T2, 4) - Ptot;
+          Real df = rho + (4.0 * prat / 3.0) * std::pow(T2, 3);
+          Real dT = -f / df;
+          T2 += dT;
+          if (std::fabs(dT) < 1e-10 * T2) break;
+        }
+        // ph->w(IPR, k, j, i) = rho * T2;
+        Real Etot_old = ph->u(IEN, k, j, i);
+        Real m1 = ph->u(IM1, k, j, i), m2 = ph->u(IM2, k, j, i), m3 = ph->u(IM3, k, j, i);
+        Real KE = 0.5 * (m1 * m1 + m2 * m2 + m3 * m3) / rho;
+        Real ME = 0.0;
+#ifdef MAGNETIC_FIELDS_ENABLED
+        {
+          auto &B = pf->bcc;
+          Real bx = B(IB1, k, j, i), by = B(IB2, k, j, i), bz = B(IB3, k, j, i);
+          ME = 0.5 * (bx * bx + by * by + bz * bz);
+        }
+#endif
+        Real IE_old = Etot_old - KE - ME;
+        Real scale_IE = T2 / T1;
+        Real IE_new = IE_old * scale_IE;
+        ph->u(IEN, k, j, i) = IE_new + KE + ME;
+        Real scale_rad = std::pow(T2, 4) / Trad1_4;
+        int Nbin = rad->nfreq * rad->nang;
+        // for (int n = 0; n < Nbin; ++n) {
+        //   rad->ir(k, j, i, n) *= scale_rad;
+        // }
+      }
+    }
+  }
+}
+
+// Utility function: CheckPlace
+void CheckPlace(Mesh *mesh, ParameterInput *pin) {
+  if (Globals::my_rank == 0) {
+    Real pitch = pin->GetReal("stream", "pitch");
+    Real roll  = pin->GetReal("stream", "roll");
+    Real yaw   = pin->GetReal("stream", "yaw");
+    Real l     = pin->GetReal("stream", "src_l");
+    Real m     = pin->GetReal("stream", "src_m");
+    Real n     = pin->GetReal("stream", "src_n");
+    auto snap = Problem::SnapToGrid(mesh, pitch, roll, yaw, l, m, n);
+    std::cout << "[CHECK_PLACE] (restart) snapped to ("
+              << snap.l << "," << snap.m << "," << snap.n << ")\n";
+  }
 }

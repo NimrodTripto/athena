@@ -9,7 +9,7 @@
 // C headers
 
 // C++ headers
-#include <cmath>  // pow(), trig functions
+#include <cmath>  // pow(), trig functions #
 #include <iomanip>
 #include <iostream>   // endl
 #include <limits>

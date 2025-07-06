@@ -1,0 +1,96 @@
+#!/bin/bash
+
+set -e
+
+tmp_dir=$(realpath "$(mktemp -dp "$(dirname -- "$0")")")
+trap "rmdir -- '$tmp_dir'; trap - EXIT; exit" \
+  EXIT SIGHUP SIGINT SIGQUIT SIGTERM
+
+declare -A opt
+for arg; do
+  case $arg in
+    -c|--configure-only) opt['configure']= ;;
+    -w|--warnings)       opt['warnings']=  ;;
+    --ipo)               opt['ipo']=       ;;
+    --openmp)            opt['openmp']=    ;;
+    -b|--mag)            opt['mag']=       ;;
+    -r|--rad)            opt['rad']=       ;;
+    --hllc)              opt['hllc']=      ;;
+    --hlld)              opt['hlld']=      ;;
+    --hlle)              opt['hlle']=      ;;
+    --debug)             opt['debug']=     ;;
+    --*=*) arg=${arg#--}; opt["${arg%%=*}"]=${arg#*=} ;;
+    *)     echo "unrecognized option: $arg" >&2; exit 1 ;;
+  esac
+done
+
+prob=$(realpath "$(dirname "$0")")
+prob=${prob##*/}
+makefile='Makefile'
+
+module load 'hdf5'
+
+case $(mpicxx "${cxx_flags[@]}" --version) in
+  *g++*)
+    opt['gcc']=
+    [ -n "${opt['ipo']+ }" ] && cxx_flags+=('-flto') ;;
+  *icpc*|*Intel*)
+    cxx_flags+=('-Wno-unknown-pragmas')
+    [ -n "${opt['ipo']+ }" ] && cxx_flags+=('-ipo')  ;;
+esac
+
+[ -n "${opt['warnings']+ }" ] &&
+  cxx_flags+=('-Wall' '-Wextra' '-pedantic-errors')
+
+cd "$(dirname -- "$0")/.." || exit 1
+
+if [ -n "${opt['suffix']+ }" ]; then
+  [ -e 'configure.log' ] && mv 'configure.log' -- "$tmp_dir"
+  [ -e 'src/defs.hpp' ] && mv 'src/defs.hpp' -- "$tmp_dir"
+  suffix_dir="dir-${opt['suffix']}"
+  mkdir -p -- "$suffix_dir/"{inc{,/a{,/b{,/c{,/d{,/e}}}}},obj}
+  suffix_include=("--include=$suffix_dir/inc"{,/a{,/b{,/c{,/d{,/e}}}}})
+fi
+
+python3 configure.py \
+  --prob "$prob" --coord spherical_polar \
+  ${opt['mag']+-b} \
+  ${opt['rad']+-nr_radiation} \
+  ${opt['hllc']+--flux hllc} \
+  ${opt['hlld']+--flux hlld} \
+  ${opt['hlle']+--flux hlle} \
+  -mpi -hdf5 -h5double \
+  ${opt['openmp']+-omp} \
+  ${opt['debug']+-debug} \
+  "${suffix_include[@]}" \
+  --cflag="${cxx_flags[*]}" \
+  --hdf5_path="$HDF5_ROOT"
+
+if [ -n "${opt['suffix']+ }" ]; then
+  mv 'configure.log' -- "$suffix_dir"
+  mv 'src/defs.hpp' -- "$suffix_dir/inc"
+  [ -e "$tmp_dir/configure.log" ] && mv -- "$tmp_dir/configure.log" .
+  [ -e "$tmp_dir/defs.hpp" ] && mv -- "$tmp_dir/defs.hpp" 'src'
+fi
+
+sed -i '/\$(PROBLEM_FILE)/ a\
+	     src/pgen/pgenphys.cpp \\\
+	     src/pgen/pgenutil.cpp \\' -- "$makefile"
+
+if [ -n "${opt['ipo']+ }" ] && [ -n "${opt['gcc']+ }" ]; then
+  rand_cmd='-frandom-seed=$(shell echo -n '\''$@'\'' | md5sum | head -c32)'
+  sed -i 's/\$(CXXFLAGS)/& '"$rand_cmd/" -- "$makefile"
+fi
+
+if [ -n "${opt['suffix']+ }" ]; then
+  mv -- "$makefile" "$makefile-${opt['suffix']}"
+  makefile="$makefile-${opt['suffix']}"
+  sed -i '
+    /^EXECUTABLE := / s|$|-'"${opt['suffix']}"'|
+    /^OBJ_DIR := / s|obj/$|dir-'"${opt['suffix']}"'/obj/|' -- "$makefile"
+fi
+
+if [ -z "${opt['configure']+ }" ]; then
+  make -f "$makefile" clean
+  make -f "$makefile" all -j8
+fi

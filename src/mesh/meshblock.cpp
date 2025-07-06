@@ -58,6 +58,10 @@ MeshBlock::MeshBlock(int igid, int ilid, LogicalLocation iloc, RegionSize input_
     new_block_dt_{}, new_block_dt_hyperbolic_{}, new_block_dt_parabolic_{},
     new_block_dt_user_{},
     nreal_user_meshblock_data_(), nint_user_meshblock_data_(), cost_(1.0) {
+  // std::cout<<"[MeshBlock ctor ▶] rank="<<Globals::my_rank
+  //           <<" gid="<<igid<<" lid="<<ilid
+  //           <<" loc=("<<iloc.level<<","<<iloc.lx1
+  //                 <<","<<iloc.lx2<<","<<iloc.lx3<<")\n";
   // initialize grid indices
   is = NGHOST;
   ie = is + block_size.nx1 - 1;
@@ -254,6 +258,8 @@ MeshBlock::MeshBlock(int igid, int ilid, LogicalLocation iloc, RegionSize input_
   // Create user mesh data
   InitUserMeshBlockData(pin);
 
+  // std::cout<<"[MeshBlock ctor ◀] rank="<<Globals::my_rank
+  //           <<" gid="<<igid<<" ctor complete\n";
   return;
 }
 
@@ -268,6 +274,10 @@ MeshBlock::MeshBlock(int igid, int ilid, Mesh *pm, ParameterInput *pin,
     new_block_dt_{}, new_block_dt_hyperbolic_{}, new_block_dt_parabolic_{},
     new_block_dt_user_{},
     nreal_user_meshblock_data_(), nint_user_meshblock_data_(), cost_(icost) {
+  // std::cout<<"[MeshBlock ctor (restart) ▶] rank="<<Globals::my_rank
+  //           <<" gid="<<igid<<" lid="<<ilid
+  //           <<" loc=("<<iloc.level<<","<<iloc.lx1
+  //                 <<","<<iloc.lx2<<","<<iloc.lx3<<")\n";
   // initialize grid indices
   is = NGHOST;
   ie = is + block_size.nx1 - 1;
@@ -537,6 +547,8 @@ MeshBlock::MeshBlock(int igid, int ilid, Mesh *pm, ParameterInput *pin,
                 ruser_meshblock_data[n].GetSizeInBytes());
     os += ruser_meshblock_data[n].GetSizeInBytes();
   }
+  // std::cout<<"[MeshBlock ctor (restart) ◀] rank="<<Globals::my_rank
+  //           <<" gid="<<igid<<" ctor complete\n";
   return;
 }
 

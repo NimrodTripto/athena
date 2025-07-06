@@ -501,8 +501,6 @@ void ATHDF5Output::WriteOutputFile(Mesh *pm, ParameterInput *pin, bool flag) {
   }
 
   // Prepare datatypes and dataspaces for writing attributes
-  hid_t string_type = H5Tcopy(H5T_C_S1);
-  H5Tset_size(string_type, max_name_length+1);
   hid_t dataspace_scalar = H5Screate(H5S_SCALAR);
   dims_count[0] = 3;
   hid_t dataspace_triple = H5Screate_simple(1, dims_count, NULL);
@@ -527,16 +525,21 @@ void ATHDF5Output::WriteOutputFile(Mesh *pm, ParameterInput *pin, bool flag) {
   code_time = static_cast<H5Real>(time); // output time for xdmf
 
   // Write coordinate system
-  if (std::strlen(COORDINATE_SYSTEM) > max_name_length) {
-    std::stringstream msg;
-    msg << "### FATAL ERROR in athdf5 initialization\n"
-        << "Coordinate name too long\n";
-    ATHENA_ERROR(msg);
+  // copy into a full-sized, zero-padded buffer so H5Awrite never overruns
+  {
+    char coord_buf[max_name_length+1];
+    std::memset(coord_buf, 0, max_name_length+1);
+    std::strncpy(coord_buf, COORDINATE_SYSTEM, max_name_length);
+
+    hid_t string_type_local = H5Tcopy(H5T_C_S1);
+    H5Tset_size(string_type_local, max_name_length+1);
+
+    attribute = H5Acreate2(file, "Coordinates", string_type_local,
+                           dataspace_scalar, H5P_DEFAULT, H5P_DEFAULT);
+    H5Awrite(attribute, string_type_local, coord_buf);
+    H5Aclose(attribute);
+    H5Tclose(string_type_local);
   }
-  attribute = H5Acreate2(file, "Coordinates", string_type, dataspace_scalar,
-                         H5P_DEFAULT, H5P_DEFAULT);
-  H5Awrite(attribute, string_type, COORDINATE_SYSTEM);
-  H5Aclose(attribute);
 
   // Write extent of grid in x1-direction
   double coord_range[3];
@@ -606,16 +609,22 @@ void ATHDF5Output::WriteOutputFile(Mesh *pm, ParameterInput *pin, bool flag) {
   H5Aclose(attribute);
 
   // Write names of datasets in same order
-  attribute = H5Acreate2(file, "DatasetNames", string_type, dataspace_dataset_list,
+  hid_t string_type_local_dataset = H5Tcopy(H5T_C_S1);
+  H5Tset_size(string_type_local_dataset, max_name_length+1);
+  attribute = H5Acreate2(file, "DatasetNames", string_type_local_dataset, dataspace_dataset_list,
                          H5P_DEFAULT, H5P_DEFAULT);
-  H5Awrite(attribute, string_type, dataset_names);
+  H5Awrite(attribute, string_type_local_dataset, dataset_names);
   H5Aclose(attribute);
+  H5Tclose(string_type_local_dataset);
 
   // Write array of variable names
-  attribute = H5Acreate2(file, "VariableNames", string_type, dataspace_variable_list,
+  hid_t string_type_local_variable = H5Tcopy(H5T_C_S1);
+  H5Tset_size(string_type_local_variable, max_name_length+1);
+  attribute = H5Acreate2(file, "VariableNames", string_type_local_variable, dataspace_variable_list,
                          H5P_DEFAULT, H5P_DEFAULT);
-  H5Awrite(attribute, string_type, variable_names);
+  H5Awrite(attribute, string_type_local_variable, variable_names);
   H5Aclose(attribute);
+  H5Tclose(string_type_local_variable);
 
   // Close attribute dataspaces
   H5Sclose(dataspace_scalar);

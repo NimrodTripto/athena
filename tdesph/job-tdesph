@@ -1,0 +1,181 @@
+#!/bin/bash
+
+### start of parameters ###
+
+#SBATCH --job-name=tde
+  #SBATCH --partition=none
+#SBATCH --qos=embers
+#SBATCH --account=gts-cchan325
+#SBATCH --nodes=32
+#SBATCH --ntasks-per-node=24
+#SBATCH --time=1:00:00
+  #SBATCH --mem-per-cpu=2G
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=chchan@gatech.edu
+#SBATCH --output=log/%j
+
+  #PBS -N tde
+  #PBS -q none
+  #PBS -l select=32:ncpus=24:mpiprocs=24
+  #PBS -l walltime=1:00:00
+  #PBS -l pmem=2gb
+  #PBS -m bea
+  #PBS -M chchan@gatech.edu
+  #PBS -o log -e log
+
+has_mag=true
+has_rad=true
+is_restart=true
+reuse_executable=false
+
+base_dir="$HOME"
+code_dir="$base_dir/athena-tde"
+restart_dir="$base_dir/test/tst0000"
+output_dir="$base_dir/test/tst0033"
+
+input_file="$code_dir/tde/athinput-tdesph"
+restart_glob='*?.[0-9][0-9][0-9][0-9][0-9].rst'
+
+makefile='Makefile-rmhd'
+executable='athena-rmhd'
+args+=('output1/dt=1.7882258878432983e-4' 'output2/dt=-1')
+
+module load 'hdf5'
+
+mpiexec='srun'
+mpi_opts=()
+
+### end of parameters ###
+
+error() { printf '%s\n' "$1" >&2; exit 1; }
+
+job-stat() {
+  [ "$SLURM_JOBID" ] && scontrol show job="$SLURM_JOBID" |
+    sed -n 's/\(^\|.* \)'"$1"'=\(.*\)\($\| .*\)/\2/p'
+}
+
+stdout_log="$output_dir/log/stdout"
+stderr_log="$output_dir/log/stderr"
+
+if ! $reuse_executable; then
+  makefile="$code_dir/$makefile"
+  executable="$code_dir/bin/$executable"
+else
+  makefile="$restart_dir/bin/$makefile"
+  executable="$restart_dir/bin/$executable"
+fi
+
+cmdline=("$executable" '-d' "$output_dir/raw")
+if ! $is_restart; then
+  cmdline+=('-i' "$input_file")
+else
+  restart_file=$(
+    shopt -s nullglob
+    restart_files=("$restart_dir/rst/"$restart_glob)
+    [ ${#restart_files[@]} -eq 0 ] && exit 1
+    printf '%s\n' "${restart_files[-1]}"
+  ) || error 'restart file does not exist'
+  cmdline+=('-r' "$restart_file")
+fi
+cmdline+=("${args[@]}")
+
+mkdir "$output_dir" 2>/dev/null || error 'output directory exists'
+
+config=$(mpiexec -n 1 "$executable" -h) || error 'cannot run executable'
+regex_mag='Magnetic fields: *ON'
+regex_rad='Radiative Transfer: *ON'
+$has_mag; lhs=$?; [[ $config =~ $regex_mag ]]; rhs=$?
+(( $lhs == $rhs )) || error 'code is incorrectly configured'
+$has_rad; lhs=$?; [[ $config =~ $regex_rad ]]; rhs=$?
+(( $lhs == $rhs )) || error 'code is incorrectly configured'
+
+mkdir "$output_dir/log"
+exec > >(tee -a "$stdout_log") 2> >(tee -a "$stderr_log")
+
+[ "$SLURM_JOBID" ] && { <<EOF cat; echo; }
+-----
+bash     $BASH_VERSION
+job      $SLURM_JOBID ($SLURM_JOB_NAME:$SLURM_JOB_PARTITION:$SLURM_JOB_QOS)
+submit   $SLURM_SUBMIT_HOST:$SLURM_SUBMIT_DIR
+nodes    $SLURM_JOB_NODELIST
+output   $output_dir
+cmdline  ${cmdline[@]}
+options  $(sed -n '/^#SBATCH / {s///; H}; ${g; s/^\n//; s/\n/ /g; p}' "$0")
+-----
+EOF
+
+[ "$PBS_JOBID" ] && { <<EOF cat; echo; }
+-----
+bash     $BASH_VERSION
+job      $PBS_JOBID ($PBS_JOBNAME:$PBS_QUEUE)
+submit   $PBS_O_WORKDIR
+output   $output_dir
+cmdline  ${cmdline[@]}
+options  $(sed -n '/^#PBS / {s///; H}; ${g; s/^\n//; s/\n/ /g; p}' "$0")
+-----
+EOF
+
+mkdir "$output_dir/bin"
+cp "$makefile" "$executable" "$0" "$output_dir/bin"
+chmod u+w "$output_dir/bin/${0##*/}"
+[ -f "$PBS_NODEFILE" ] && cp "$PBS_NODEFILE" "$output_dir/bin"
+
+if ! ($is_restart && $reuse_executable); then
+  mkdir "$output_dir/src"
+  (cd "$code_dir/src" && find \( -type f -o -type l \) \! -name '*.o' \
+    -exec cp --parents -t "$output_dir/src" '{}' +)
+else
+  cp -r "$restart_dir/src" "$output_dir"
+fi
+
+if ! $is_restart; then
+  mkdir "$output_dir/etc"
+  cp "$input_file" "$output_dir/etc"
+else
+  cp -r "$restart_dir/etc" "$output_dir"
+fi
+
+old_progress=0
+{ while :; do
+  sleep 300
+  new_progress=$(<"$stdout_log" wc -l)
+  if [ $old_progress -eq $new_progress ]; then
+    [ "$SLURM_JOBID" ] && scancel "$SLURM_JOBID"
+    [ "$PBS_JOBID" ] && qdel "$PBS_JOBID"
+    error 'simulation does not progress'
+  else
+    old_progress=$new_progress
+  fi
+done; } & out_pid=$!
+
+mkdir "$output_dir/rst"
+{ while :; do
+  sleep 600
+  compgen -G "$output_dir/raw/*.rst" >/dev/null &&
+    mv "$output_dir/raw/"*.rst "$output_dir/rst"
+done; } & rst_pid=$!
+
+finish() {
+  local -r end_time=$(date '+%s')
+  local -r wall_time=$((end_time-start_time))
+  echo; <<EOF cat
+-----
+start    $(date -d "@$start_time")
+end      $(date -d "@$end_time")
+wall     $(printf '%.2i:%.2i:%.2i' \
+  "$((wall_time/3600))" "$((wall_time/60%60))" "$((wall_time%60))")
+-----
+EOF
+
+  kill $out_pid $rst_pid
+  trap - EXIT; exit
+}
+
+trap finish EXIT SIGTERM SIGINT SIGQUIT SIGHUP
+start_time=$(date '+%s')
+
+if [ "$SLURM_JOBID" ]; then
+  "$mpiexec" "${mpi_opts[@]}" "${cmdline[@]}"
+elif [ "$PBS_JOBID" ]; then
+  "$mpiexec" "${mpi_opts[@]}" "${cmdline[@]}"
+fi

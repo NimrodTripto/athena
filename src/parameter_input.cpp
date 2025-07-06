@@ -53,6 +53,8 @@
 #include <sstream>    // stringstream
 #include <stdexcept>  // runtime_error
 #include <string>     // string
+#include <iomanip>    // std::setprecision
+#include <limits>     // std::numeric_limits
 
 // Athena++ headers
 #include "athena.hpp"
@@ -586,6 +588,7 @@ int ParameterInput::GetOrAddInteger(std::string block, std::string name, int def
     ret = atoi(val.c_str());
   } else {
     pb = FindOrAddBlock(block);
+    ss_value << std::setprecision(std::numeric_limits<Real>::max_digits10);
     ss_value << def_value;
     AddParameter(pb, name, ss_value.str(), "# Default value added at run time");
     ret = def_value;
@@ -709,6 +712,7 @@ Real ParameterInput::SetReal(std::string block, std::string name, Real value) {
 
   Lock();
   pb = FindOrAddBlock(block);
+  ss_value << std::setprecision(std::numeric_limits<Real>::max_digits10);
   ss_value << value;
   AddParameter(pb, name, ss_value.str(), "# Updated during run time");
   Unlock();

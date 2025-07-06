@@ -1,0 +1,125 @@
+# input file reconstructed from restart file with small differences in numbers
+# restart file based on 2019ApJ...885..144J
+# opacity from https://github.com/zhuzh1983/combined-opacity
+
+# assumptions:
+#   gas:           fully ionized hydrogen (X = 0.7) and helium (Y = 0.3)
+#   particle mass: mu from above
+#   central mass:  M      = 5e8*MSun      = 9.942049353490255e41  g
+
+# units:
+#   central mass:  @M     = 30*MSun       = 5.9652296120941525e34 g
+#   length:        @r     = 2*G*M/c^2     = 1.4766250380501247e14 cm
+#   density:       @rho                   = 1e-8                  g/cm^3
+#   velocity       @v     = sqrt(G*@M/@r) = 5.192557689819587e6   cm/s
+#   time:          @t     = @r/@v         = 2.8437335245117504e7  s
+#   temperature:   @T     = mu*@v**2/kB   = 2.0094857736121508e5  K
+#   opacity:       @kappa = 1/(@rho*@r)   = 6.772199944005382e-7  cm^2/g
+
+<comment>
+problem      = stream of tidally disrupted star plunging through disk
+reference    =
+configure    = --prob=tde --coord=spherical_polar -b -radiation
+
+<job>
+problem_id   = tde                   # base name of output files
+
+<hydro>
+gamma        = 1.6666666666666667    # adiabatic index
+dfloor       = 1e-10                 # density floor
+pfloor       = 1e-10                 # pressure floor
+
+# extensions specific to problem generator
+vaceil       = 2886.751345948129     # Alfven speed ceiling
+
+<radiation>
+nmu          = 4                     # order of angle grid
+prat         = 45.753898885012866    # ratio of radiation to gas energy code unit
+crat         = 5773.502691896258     # light speed in code units
+reduced_factor = 1                   # ratio of physical to reduced light speed
+Compton      = 1                     # whether to include Compton scattering
+length_unit  = 1.4766250380501247e14 # length code unit (cgs)
+density_unit = 1e-8                  # density code unit (cgs)
+T_unit       = 2.0094857736121508e5  # temperature code unit (cgs)
+electron_scattering = 0.3382695288013851 # Thomson cross section per mean particle mass
+
+# extensions specific to problem generator
+csfloor      = 1e-2  # FIXME         # isothermal sound speed floor
+csceil       = 2886.751345948129     # isothermal sound speed ceiling
+
+<opacity>
+type         = zhu_2                 # opacity type
+fname = ../athena/tdesph/zhu_2.dat   # opacitysolar09dustq3p5amax0p1new
+
+<gravity>
+type         = paczynski_wiita       # gravity type
+mass         = 1.6666666666666666e7  # mass
+grav_radius  = 1                     # gravitational radius
+
+<stream>
+type         = parabolic             # stream type
+pitch        = 0                     # rotation angle about y-axis
+roll         = 1.6707963267948966    # rotation angle about x-axis
+yaw          = 0                     # rotation angle about z-axis
+src_l        = 30    # FIXME         # l-coordinate of source
+src_m        = 5     # FIXME         # m-coordinate of source
+src_n        = 0                     # n-coordinate of source
+wid_l        = 5     # FIXME         # l-width of source
+wid_m        = 5     # FIXME         # m-width of source
+wid_n        = 0.5   # FIXME         # n-width of source
+current      = 60    # FIXME         # mass current
+sound_speed  = 0.5   # FIXME         # sound speed
+mode         = volume                # injection mode
+
+<mesh>
+nx1          = 64                    # cell count in x1-direction
+x1min        = 2                     # minimum value of x1
+x1max        = 800                   # maximum value of x1
+x1rat        = 1.098138675682947     # x1-size ratio of x1-adjacent cells
+ix1_bc       = user                  # inner-x1 boundary condition
+ox1_bc       = user                  # outer-x1 boundary condition
+
+nx2          = 32                    # cell count in x2-direction
+x2min        = 0                     # minimum value of x2
+x2max        = 3.141592653589793     # maximum value of x2
+x2rat        = 1                     # x2-size ratio of x2-adjacent cells
+ix2_bc       = polar                 # inner-x2 boundary condition
+ox2_bc       = polar                 # outer-x2 boundary condition
+
+nx3          = 64                    # cell count in x3-direction
+x3min        = 0                     # minimum value of x3
+x3max        = 6.2831853071795863    # maximum value of x3
+x3rat        = 1                     # x3-size ratio of x3-adjacent cells
+ix3_bc       = periodic              # inner-x3 boundary condition
+ox3_bc       = periodic              # outer-x3 boundary condition
+
+refinement   = static                # type of mesh refinement
+num_threads  = 1                     # maximum number of OpenMP threads
+
+<meshblock>
+nx1          = 16                    # cell count per block in x1-direction
+nx2          = 4                     # cell count per block in x2-direction
+nx3          = 32                    # cell count per block in x3-direction
+
+<refinement1>
+x1min        = 3                     # minimum value of x1
+x1max        = 100                   # maximum value of x1
+x2min        = 1.4835298641951802    # minimum value of x2
+x2max        = 1.6580627893946132    # maximum value of x2
+x3min        = 0                     # minimum value of x3
+x3max        = 6.2831853071795863    # maximum value of x3
+level        = 4                     # refinement levels
+
+<time>
+cfl_number   = 0.3333333333333333    # CFL number
+nlim         = -1                    # cycle limit
+tlim         = 8.94112943921649      # time limit
+
+<output1>
+file_type    = hdf5                  # HDF5 data dump
+variable     = prim                  # variables to be output
+dt           = 1.7882258878432983e-3 # time increment between outputs
+
+<output2>
+file_type    = rst                   # restart dump
+dt           = 1.7882258878432983e-3 # time increment between outputs

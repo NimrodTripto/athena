@@ -2396,9 +2396,9 @@ void RescaleThermalAndRadiation(Hydro *ph, Field *pf, NRRadiation *rad,
         ph->u(IEN, k, j, i) = IE_new + KE + ME;
         Real scale_rad = std::pow(T2, 4) / Trad1_4;
         int Nbin = rad->nfreq * rad->nang;
-        // for (int n = 0; n < Nbin; ++n) {
-        //   rad->ir(k, j, i, n) *= scale_rad;
-        // }
+        for (int n = 0; n < Nbin; ++n) {
+          rad->ir(k, j, i, n) *= scale_rad;
+        }
       }
     }
   }

@@ -1,0 +1,12 @@
+{
+    "exclude": [
+      "**/hdf_files",
+      "**/.venv",
+      "**/venv",
+      "**/venv_small",
+      "**/obj",
+      "**/.git",
+      "**/__pycache__",
+      "**/athena"
+    ]
+  }

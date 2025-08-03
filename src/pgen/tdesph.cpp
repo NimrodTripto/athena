@@ -1192,7 +1192,7 @@ int ProblemRefinement(MeshBlock *pmb) {
       target = box.level;
       found  = true;
     } else {
-      target = std::min(target, box.level);
+      target = std::max(target, box.level);
     }
   }
 
@@ -1227,5 +1227,5 @@ void MeshBlock::InitUserMeshBlockData(ParameterInput *in) {
   if (pnrrad && in->GetOrAddInteger("radiation","nmu",0)>0) {
     pnrrad->EnrollOpacityFunction(op_wrapper);
   }
-#endif
+  #endif
 }

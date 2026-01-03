@@ -63,3 +63,5 @@ meshtest.dat
 
 # compiled doxygen file
 doc/doxy*
+
+Makefile-rmhd

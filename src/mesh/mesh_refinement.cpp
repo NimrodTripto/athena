@@ -12,6 +12,7 @@
 #include <algorithm>   // max()
 #include <cmath>
 #include <cstring>     // strcmp()
+#include <iostream>    // std::cout
 #include <sstream>
 #include <stdexcept>  // runtime_error
 #include <string>
@@ -1406,13 +1407,20 @@ void MeshRefinement::CheckRefinementCondition() {
   if (aret > 0) {
     if (pmb->loc.level == pmb->pmy_mesh->max_level) {
       refine_flag_ = 0;
+      std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                << " requested refine but already at max_level, flag=0\n";
     } else {
       refine_flag_ = 1;
+      std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                << " -> L" << (pmb->loc.level+1) << " (refine requested=" << ret
+                << "), flag=+1 **REFINEMENT CONFIRMED**\n";
     }
   } else if (aret < 0) {
     if (pmb->loc.level == pmb->pmy_mesh->root_level) {
       refine_flag_ = 0;
       deref_count_ = 0;
+      std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                << " requested derefine but already at root_level, flag=0\n";
     } else {
       deref_count_++;
       int ec = 0, js, je, ks, ke;
@@ -1438,13 +1446,27 @@ void MeshRefinement::CheckRefinementCondition() {
       }
       if (ec > 0) {
         refine_flag_ = 0;
+        std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                  << " requested derefine but has " << ec << " finer neighbors, flag=0\n";
       } else {
         if (deref_count_ >= deref_threshold_) {
           refine_flag_ = -1;
+          std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                    << " -> L" << (pmb->loc.level-1) << " (derefine_count=" << deref_count_
+                    << " >= " << deref_threshold_ << "), flag=-1 **DEREFINEMENT CONFIRMED**\n";
         } else {
           refine_flag_ = 0;
+          std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                    << " requested derefine but count=" << deref_count_
+                    << " < threshold=" << deref_threshold_ << ", flag=0\n";
         }
       }
+    }
+  } else {
+    // aret == 0: no change requested
+    if (ret != 0) {
+      std::cout << "[AMR_CPP] gid=" << pmb->gid << " L" << pmb->loc.level
+                << " user returned " << ret << " but final flag=0 (no change)\n";
     }
   }
   return;

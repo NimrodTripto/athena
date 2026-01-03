@@ -1,5 +1,6 @@
 #include <cmath>    // std::atan2, std::cos, std::exp, std::fabs, std::fmax,
                     // std::log, std::pow, std::sin, std::sqrt
+#include <cstddef>  // offsetof
 #include <limits>   // std::numeric_limits
 #include <memory>   // std::shared_ptr
 #include <tuple>    // std::get, std::make_tuple, std::tuple
@@ -31,7 +32,9 @@ void minloc2_fn(void *in_data, void *inout_data, int *len,
 
   for (int i = 0; i < *len; ++i) {
     if ((in[i].dr  < inout[i].dr  - 1e-12) ||
-        (std::fabs(in[i].dr - inout[i].dr) < 1e-12 && in[i].dang2 < inout[i].dang2 - 1e-12)) {
+        (std::fabs(in[i].dr - inout[i].dr) < 1e-12 && in[i].dang2 < inout[i].dang2 - 1e-12) ||
+        (std::fabs(in[i].dr - inout[i].dr) < 1e-12 && std::fabs(in[i].dang2 - inout[i].dang2) < 1e-12
+         && in[i].rank < inout[i].rank)) {
       inout[i] = in[i];
     }
   }
@@ -201,23 +204,43 @@ SnapResult SnapToGrid(const ::Mesh *mesh,
   std::cout << "r=" << best_r << " theta=" << best_th << " phi=" << best_ph << std::endl;
   std::cout << "Angular distance squared: " << best_dang2 << std::endl;
 
-  // e) convert winning cell back to (ℓ,m,n)
-  const Real  width = src_l - src_m;
+  // e) convert winning cell back to (ℓ,m,n) using proper inverse transform
+  // The correct inverse: (r,theta,phi) -> Cartesian -> stream-aligned -> (l,m,n)
+  // This matches ParabolicStream::CalcStreamCoords logic
+  Real const ci = std::cos(pitch), si = std::sin(pitch);
+  Real const cj = std::cos(roll),  sj = std::sin(roll);
+  Real const ck = std::cos(yaw),   sk = std::sin(yaw);
+  Real const cq = std::cos(best_th), sq = std::sin(best_th);
+  Real const cp = std::cos(best_ph), sp = std::sin(best_ph);
+
+  // Transform from spherical to Cartesian coordinates
+  Real x = best_r * sq * cp;
+  Real y = best_r * sq * sp;
+  Real z = best_r * cq;
+
+  // Transform from global to stream-aligned Cartesian coordinates
+  // (same rotation as in CalcStreamCoords: pitch about y, roll about rotated x, yaw about rotated z)
+  Real const s = x*( ci*ck+si*sj*sk) + y*( cj*sk) + z*(-si*ck+ci*sj*sk);
+  Real const t = x*(-ci*sk+si*sj*ck) + y*( cj*ck) + z*( si*sk+ci*sj*ck);
+  Real const u = x*( si*cj         ) + y*(-sj   ) + z*( ci*cj         );
+
+  // Transform from stream-aligned Cartesian to parabolic rotational coordinates
+  // n is computed as atan2(u,t) in the stream-aligned frame, NOT the global phi
   SnapResult res;
-  res.l     = best_r + 0.5*width;
-  res.m     = best_r - 0.5*width;
-  res.n     = best_ph;
+  res.l     = best_r + s;
+  res.m     = best_r - s;
+  res.n     = std::atan2(u, t);  // Correct: n is in stream-aligned frame, not global phi
   res.pitch = pitch;
   res.roll  = roll;
-  res.yaw   = yaw + (best_ph - src_n);
+  res.yaw   = yaw;  // Use original yaw since we computed n correctly with it
 
   // [CHECK_PLACE] printout for consistency with tdesph.cpp, now with l,m,n
   std::cout << "[CHECK_PLACE] snapped to ("
             << res.l << "," << res.m << "," << res.n << ")\n";
   std::cout << "[CHECK_PLACE] l=" << res.l << " m=" << res.m << " n=" << res.n << "\n";
-  std::cout << "[CHECK_PLACE] angles: pitch=" << pitch
-            << " roll=" << roll
-            << " yaw=" << yaw << "\n";
+  std::cout << "[CHECK_PLACE] angles: pitch=" << res.pitch
+            << " roll=" << res.roll
+            << " yaw=" << res.yaw << "\n";
 
 #ifdef MPI_PARALLEL
   // Pack up for a global "minloc" on the pair (best_dr, best_dang2).
@@ -227,7 +250,15 @@ SnapResult SnapToGrid(const ::Mesh *mesh,
   // Use a custom MPI op: compare first dr, then dang2 if dr ties.
   MPI_Op minloc2;
   MPI_Datatype mpi_type_Loc;
-  MPI_Type_contiguous(3, MPI_DOUBLE, &mpi_type_Loc); // dr, dang2, rank (double for rank to match Loc)
+  
+  // Create proper MPI struct type matching Loc: 2 doubles + 1 int
+  int blocklengths[3] = {1, 1, 1};
+  MPI_Datatype types[3] = {MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
+  MPI_Aint offsets[3];
+  offsets[0] = offsetof(Loc, dr);
+  offsets[1] = offsetof(Loc, dang2);
+  offsets[2] = offsetof(Loc, rank);
+  MPI_Type_create_struct(3, blocklengths, offsets, types, &mpi_type_Loc);
   MPI_Type_commit(&mpi_type_Loc);
   MPI_Op_create(&minloc2_fn, /*commute=*/true, &minloc2);
   
@@ -250,9 +281,9 @@ SnapResult SnapToGrid(const ::Mesh *mesh,
 #endif
 
   // Convert best spherical coordinates to Cartesian
-  Real x = best_r * std::sin(best_th) * std::cos(best_ph);
-  Real y = best_r * std::sin(best_th) * std::sin(best_ph);
-  Real z = best_r * std::cos(best_th);
+  x = best_r * std::sin(best_th) * std::cos(best_ph);
+  y = best_r * std::sin(best_th) * std::sin(best_ph);
+  z = best_r * std::cos(best_th);
 
   // Print coordinates
   std::cout << "Snapped cell coordinates:" << std::endl;

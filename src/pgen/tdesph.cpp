@@ -2,6 +2,7 @@
 #include <array>    // std::array
 #include <cmath>    // std::fmax, std::fmin, std::log10, std::pow
 #include <cstring>  // std::strcmp
+#include <iostream>  // std::cout
 #include <limits>   // std::numeric_limits
 #include <memory>   // std::make_shared, std::shared_ptr, std::unique_ptr
 #include <ostream>  // std::endl
@@ -10,6 +11,7 @@
 #include <tuple>    // std::get
 
 #include "../athena.hpp"
+#include "../globals.hpp"  // Globals::my_rank
 #include "../coordinates/coordinates.hpp"
 #include "../eos/eos.hpp"
 #include "../field/field.hpp"
@@ -318,6 +320,18 @@ void Mesh::InitUserMeshData(ParameterInput *in)
     g_refine_boxes.emplace_back(box);
   }
 
+  if (Globals::my_rank == 0) {
+    std::cout << "[AMR] boxes=" << g_refine_boxes.size() << "\n";
+    for (size_t i = 0; i < g_refine_boxes.size(); ++i) {
+      auto &b = g_refine_boxes[i];
+      std::cout << "[AMR] box " << i
+                << " x1=[" << b.x1min << "," << b.x1max << "]"
+                << " x2=[" << b.x2min << "," << b.x2max << "]"
+                << " x3=[" << b.x3min << "," << b.x3max << "]"
+                << " level=" << b.level << "\n";
+    }
+  }
+
   // Print all blocks found
   // std::cout << "Found " << g_refine_boxes.size() << " refinement boxes:" << std::endl;
   // for (const auto &box : g_refine_boxes) {
@@ -333,10 +347,11 @@ void Mesh::InitUserMeshData(ParameterInput *in)
     in->GetOrAddInteger("problem", "default_level", 0);
 
   if (refinement_type == "adaptive") {
-    // std::cout<< std::endl
-    //           << "should run refinement"
-    //           << std::endl;
-    EnrollUserRefinementCondition(ProblemRefinement);   // stub now
+    std::cout<< std::endl
+              << "should run refinement"
+              << std::endl;
+    EnrollUserRefinementCondition(ProblemRefinement); 
+
   }
   
   EnrollUserExplicitSourceFunction(sc_all);
@@ -1167,7 +1182,13 @@ void error_bad_param(char const *func, char const *param)
 //! box (if any) it falls in.  Return +1 to refine, –1 to derefine, 0 to leave.
 //------------------------------------------------------------------------------
 
-int ProblemRefinement(MeshBlock *pmb) {
+int ProblemRefinementDummy(MeshBlock *pmb) {
+  static int once = 0;
+  // if (once++ < 10) {
+  //   std::cout << "[AMR] ProblemRefinement called on rank " << Globals::my_rank
+  //             << " level=" << pmb->loc.level << "\n";
+  // }
+
   int lvl = pmb->loc.level;
 
   // 1) extents
@@ -1178,14 +1199,31 @@ int ProblemRefinement(MeshBlock *pmb) {
   Real x3_lo = pmb->pcoord->x3f(pmb->ks);
   Real x3_hi = pmb->pcoord->x3f(pmb->ke + 1);
 
-  // 2) find lowest target among overlapping boxes
+  // if (once <= 10) {
+  //   std::cout << "[AMR] block x1=[" << x1_lo << "," << x1_hi << "]"
+  //             << " x2=[" << x2_lo << "," << x2_hi << "]"
+  //             << " x3=[" << x3_lo << "," << x3_hi << "]\n";
+  // }
+
+  // 2) find highest target among overlapping boxes
   bool found = false;
   int  target = lvl;
 
   for (auto &box : g_refine_boxes) {
-    if (x1_hi < box.x1min || x1_lo > box.x1max ||
+    bool overlap =
+      !(x1_hi < box.x1min || x1_lo > box.x1max ||
         x2_hi < box.x2min || x2_lo > box.x2max ||
-        x3_hi < box.x3min || x3_lo > box.x3max) {
+        x3_hi < box.x3min || x3_lo > box.x3max);
+
+    // if (overlap && Globals::my_rank == 0) {
+    //   std::cout << "[AMR] OVERLAP lvl=" << lvl
+    //             << " block x1=[" << x1_lo << "," << x1_hi << "]"
+    //             << " x2=[" << x2_lo << "," << x2_hi << "]"
+    //             << " x3=[" << x3_lo << "," << x3_hi << "]"
+    //             << " target=" << box.level << "\n";
+    // }
+
+    if (!overlap) {
       continue;
     }
     if (!found) {
@@ -1203,6 +1241,7 @@ int ProblemRefinement(MeshBlock *pmb) {
 
   // 3) if no custom box found, do nothing
   if (!found) {
+    std::cout << "[AMR] NO OVERLAP rank " << Globals::my_rank;
     return 0;
   }
 
@@ -1210,6 +1249,39 @@ int ProblemRefinement(MeshBlock *pmb) {
   if (lvl < target)       return +1;
   else if (lvl > target)  return -1;
   else                     return  0;
+}
+
+int ProblemRefinement(MeshBlock *pmb) {
+  Real xmin = 6.8;  // injection at r=7.7 
+  Real xmax = 8.6;  // injection at r=7.7
+  Real ymin = 1.17;  // injection at theta=1.32
+  Real ymax = 1.6;  // injection at theta=1.32
+  Real zmin = 1.32;  // injection at phi=1.52
+  Real zmax = 1.72;  // injection at phi=1.52
+  
+  // Get block extents using face positions (not cell centers)
+  Real x1_lo = pmb->pcoord->x1f(pmb->is);
+  Real x1_hi = pmb->pcoord->x1f(pmb->ie + 1);
+  Real x2_lo = pmb->pcoord->x2f(pmb->js);
+  Real x2_hi = pmb->pcoord->x2f(pmb->je + 1);
+  Real x3_lo = pmb->pcoord->x3f(pmb->ks);
+  Real x3_hi = pmb->pcoord->x3f(pmb->ke + 1);
+  
+  // Check if block overlaps the box
+  bool overlap = !(x1_hi < xmin || x1_lo > xmax ||
+                   x2_hi < ymin || x2_lo > ymax ||
+                   x3_hi < zmin || x3_lo > zmax);
+  
+  if (overlap) {
+    // std::cout << "[AMR] Block overlaps box, refine it at place "
+    //           << "x1=[" << x1_lo << "," << x1_hi << "] "
+    //           << "x2=[" << x2_lo << "," << x2_hi << "] "
+    //           << "x3=[" << x3_lo << "," << x3_hi << "] "
+    //           << "level=" << pmb->loc.level << "\n";
+    return +1;  // Block overlaps box, refine it
+  }
+  
+  return 0;  // No overlap, no change
 }
 
 // int ProblemRefinement(MeshBlock *pmb) {

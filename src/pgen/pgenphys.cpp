@@ -677,7 +677,7 @@ std::tuple<Real, Real, Real> ParabolicStream::CalcStreamTangent(
   // calculate unit tangent to coordinate surface of parabolic rotational
   // coordinates with components in stream-aligned Cartesian coordinates
   Real const temp2 = 1 / std::sqrt(l*(l+m));
-  Real const ts = temp2 * -std::sqrt(l*m);
+  Real const ts = temp2 * std::sqrt(l*m);
   Real const tt = temp2 * l*std::cos(n);
   Real const tu = temp2 * l*std::sin(n);
 

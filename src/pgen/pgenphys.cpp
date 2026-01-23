@@ -676,7 +676,7 @@ std::tuple<Real, Real, Real> ParabolicStream::CalcStreamTangent(
 
   // calculate unit tangent to coordinate surface of parabolic rotational
   // coordinates with components in stream-aligned Cartesian coordinates
-  Real const temp2 = 1 / std::sqrt(l*(l+m));
+  Real const temp2 = -1 / std::sqrt(l*(l+m));
   Real const ts = temp2 * std::sqrt(l*m);
   Real const tt = temp2 * l*std::cos(n);
   Real const tu = temp2 * l*std::sin(n);
@@ -685,6 +685,8 @@ std::tuple<Real, Real, Real> ParabolicStream::CalcStreamTangent(
   Real const tx = ts*( ci*ck+si*sj*sk) + tt*(-ci*sk+si*sj*ck) + tu*( si*cj);
   Real const ty = ts*( cj*sk         ) + tt*( cj*ck         ) + tu*(-sj   );
   Real const tz = ts*(-si*ck+ci*sj*sk) + tt*( si*sk+ci*sj*ck) + tu*( ci*cj);
+  // print tangent vector in cartesian coordinates using cout
+  // std::cout << "Tangent vector in Cartesian coordinates: " << tx << ", " << ty << ", " << tz << std::endl;
 
   // transform tangent from Cartesian to spherical coordinates
   Real const tr = tx*sq* cp + ty*sq*sp + tz* cq;

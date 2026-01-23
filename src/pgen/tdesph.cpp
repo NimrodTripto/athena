@@ -1252,36 +1252,52 @@ int ProblemRefinementDummy(MeshBlock *pmb) {
 }
 
 int ProblemRefinement(MeshBlock *pmb) {
-  Real xmin = 6.8;  // injection at r=7.7 
-  Real xmax = 8.6;  // injection at r=7.7
-  Real ymin = 1.17;  // injection at theta=1.32
-  Real ymax = 1.6;  // injection at theta=1.32
-  Real zmin = 1.32;  // injection at phi=1.52
-  Real zmax = 1.72;  // injection at phi=1.52
+  Real x1min = 7.5;  // injection at r=7.7 
+  Real x1max = 8.6;  // injection at r=7.7
+  Real y1min = 1.25;  // injection at theta=1.32
+  Real y1max = 1.97;  // injection at theta=1.32
+  Real z1min = 1.42;  // injection at phi=1.52
+  Real z1max = 1.62;  // injection at phi=1.52
+
+  Real x2min = 8.2;
+  Real x2max = 10.4;
+  Real y2min = 1.97;
+  Real y2max = 2.5;
+  Real z2min = 1.38;
+  Real z2max = 1.62;
+
   
   // Get block extents using face positions (not cell centers)
-  Real x1_lo = pmb->pcoord->x1f(pmb->is);
-  Real x1_hi = pmb->pcoord->x1f(pmb->ie + 1);
-  Real x2_lo = pmb->pcoord->x2f(pmb->js);
-  Real x2_hi = pmb->pcoord->x2f(pmb->je + 1);
-  Real x3_lo = pmb->pcoord->x3f(pmb->ks);
-  Real x3_hi = pmb->pcoord->x3f(pmb->ke + 1);
+  Real x1_lo_1 = pmb->pcoord->x1f(pmb->is);
+  Real x1_hi_1 = pmb->pcoord->x1f(pmb->ie + 1);
+  Real x2_lo_1 = pmb->pcoord->x2f(pmb->js);
+  Real x2_hi_1 = pmb->pcoord->x2f(pmb->je + 1);
+  Real x3_lo_1 = pmb->pcoord->x3f(pmb->ks);
+  Real x3_hi_1 = pmb->pcoord->x3f(pmb->ke + 1);
+
+  Real x1_lo_2 = pmb->pcoord->x1f(pmb->is);
+  Real x1_hi_2 = pmb->pcoord->x1f(pmb->ie + 1);
+  Real x2_lo_2 = pmb->pcoord->x2f(pmb->js);
+  Real x2_hi_2 = pmb->pcoord->x2f(pmb->je + 1);
+  Real x3_lo_2 = pmb->pcoord->x3f(pmb->ks);
+  Real x3_hi_2 = pmb->pcoord->x3f(pmb->ke + 1);
   
   // Check if block overlaps the box
-  bool overlap = !(x1_hi < xmin || x1_lo > xmax ||
-                   x2_hi < ymin || x2_lo > ymax ||
-                   x3_hi < zmin || x3_lo > zmax);
+  bool overlap_1 = !(x1_hi_1 < x1min || x1_lo_1 > x1max ||
+                   x2_hi_1 < y1min || x2_lo_1 > y1max ||
+                   x3_hi_1 < z1min || x3_lo_1 > z1max);
+
+  bool overlap_2 = !(x1_hi_2 < x2min || x1_lo_2 > x2max ||
+                   x2_hi_2 < y2min || x2_lo_2 > y2max ||
+                   x3_hi_2 < z2min || x3_lo_2 > z2max);
   
-  if (overlap) {
-    // std::cout << "[AMR] Block overlaps box, refine it at place "
-    //           << "x1=[" << x1_lo << "," << x1_hi << "] "
-    //           << "x2=[" << x2_lo << "," << x2_hi << "] "
-    //           << "x3=[" << x3_lo << "," << x3_hi << "] "
-    //           << "level=" << pmb->loc.level << "\n";
-    return +1;  // Block overlaps box, refine it
+  if (overlap_1) {
+    return +1;
   }
-  
-  return 0;  // No overlap, no change
+  if (overlap_2) {
+    return +1;
+  }
+  return 0;
 }
 
 // int ProblemRefinement(MeshBlock *pmb) {

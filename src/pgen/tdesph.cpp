@@ -1262,7 +1262,7 @@ int ProblemRefinement(MeshBlock *pmb) {
   Real x2min = 8.2;
   Real x2max = 10.4;
   Real y2min = 1.97;
-  Real y2max = 2.5;
+  Real y2max = 2.3;
   Real z2min = 1.38;
   Real z2max = 1.62;
 

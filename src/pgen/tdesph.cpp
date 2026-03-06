@@ -18,6 +18,7 @@
 #include "../hydro/hydro.hpp"
 #include "../mesh/mesh.hpp"
 #include "../nr_radiation/integrators/rad_integrators.hpp"
+#include "../scalars/scalars.hpp"
 #include "../nr_radiation/radiation.hpp"
 #include "../parameter_input.hpp"
 
@@ -100,6 +101,13 @@ Problem::ParabolicStream::InjectionMode stream_mode;
 Real density_floor, pressure_floor, temp_floor;
 Real alf_spd_sq_ceil, snd_spd_sq_floor, snd_spd_sq_ceil;
 Real density_unit_cgs, temperature_unit_cgs, inv_opc_mas_unit_cgs;
+
+int scalar_init_cycle = 0;
+Real scalar_theta_min = 0.0;
+Real scalar_theta_max = 0.0;
+
+void init_scalars_once(MeshBlock *mb, AthenaArray<Real> &u_scalar,
+                       AthenaArray<Real> const &u);
 
 }
 
@@ -353,7 +361,11 @@ void Mesh::InitUserMeshData(ParameterInput *in)
     EnrollUserRefinementCondition(ProblemRefinement); 
 
   }
-  
+
+  scalar_init_cycle = in->GetOrAddInteger("problem", "scalar_init_cycle", 6073330);
+  scalar_theta_min  = in->GetReal("problem", "theta_min");
+  scalar_theta_max  = in->GetReal("problem", "theta_max");
+
   EnrollUserExplicitSourceFunction(sc_all);
 
 }
@@ -469,6 +481,15 @@ void bc_inner_x1_gas_dio(
         w(IVZ, k, j, i) =              w(IVZ, k, j, is);
         w(IPR, k, j, i) =              w(IPR, k, j, is);
       }
+  if (NSCALARS > 0 && mb->pscalars != nullptr)
+  {
+    AthenaArray<Real> &r = mb->pscalars->r;
+    for (int n = 0; n < NSCALARS; ++n)
+      for (int k = ks; k <= ke; ++k)
+        for (int j = js; j <= je; ++j)
+          for (int i = is-ng; i <= is-1; ++i)
+            r(n, k, j, i) = r(n, k, j, is);
+  }
 }
 
 void bc_outer_x1_gas_dio(
@@ -485,6 +506,15 @@ void bc_outer_x1_gas_dio(
         w(IVZ, k, j, i) =              w(IVZ, k, j, ie);
         w(IPR, k, j, i) =              w(IPR, k, j, ie);
       }
+  if (NSCALARS > 0 && mb->pscalars != nullptr)
+  {
+    AthenaArray<Real> &r = mb->pscalars->r;
+    for (int n = 0; n < NSCALARS; ++n)
+      for (int k = ks; k <= ke; ++k)
+        for (int j = js; j <= je; ++j)
+          for (int i = ie+1; i <= ie+ng; ++i)
+            r(n, k, j, i) = r(n, k, j, ie);
+  }
 }
 
 void bc_inner_x1_mag_dio(
@@ -547,6 +577,15 @@ void bc_inner_x2_gas_dio(
         w(IVZ, k, j, i) =              w(IVZ, k, js, i);
         w(IPR, k, j, i) =              w(IPR, k, js, i);
       }
+  if (NSCALARS > 0 && mb->pscalars != nullptr)
+  {
+    AthenaArray<Real> &r = mb->pscalars->r;
+    for (int n = 0; n < NSCALARS; ++n)
+      for (int i = is; i <= ie; ++i)
+        for (int k = ks; k <= ke; ++k)
+          for (int j = js-ng; j <= js-1; ++j)
+            r(n, k, j, i) = r(n, k, js, i);
+  }
 }
 
 void bc_outer_x2_gas_dio(
@@ -563,6 +602,15 @@ void bc_outer_x2_gas_dio(
         w(IVZ, k, j, i) =              w(IVZ, k, je, i);
         w(IPR, k, j, i) =              w(IPR, k, je, i);
       }
+  if (NSCALARS > 0 && mb->pscalars != nullptr)
+  {
+    AthenaArray<Real> &r = mb->pscalars->r;
+    for (int n = 0; n < NSCALARS; ++n)
+      for (int i = is; i <= ie; ++i)
+        for (int k = ks; k <= ke; ++k)
+          for (int j = je+1; j <= je+ng; ++j)
+            r(n, k, j, i) = r(n, k, je, i);
+  }
 }
 
 void bc_inner_x2_mag_dio(
@@ -687,11 +735,48 @@ void bc_outer_x2_rad_dio(
               rad->ir(k, j, i, rad->nang*l+m) = 0;
 }
 
+void init_scalars_once(MeshBlock *mb, AthenaArray<Real> &u_scalar,
+                       AthenaArray<Real> const &u)
+{
+  if (NSCALARS < 3) return;
+
+  Real const theta_min = scalar_theta_min;
+  Real const theta_max = scalar_theta_max;
+
+  int const is = mb->is, ie = mb->ie;
+  int const js = mb->js, je = mb->je;
+  int const ks = mb->ks, ke = mb->ke;
+  int const ng = NGHOST;
+  int const il = is - (is < ie) * ng, iu = ie + (is < ie) * ng;
+  int const jl = js - (js < je) * ng, ju = je + (js < je) * ng;
+  int const kl = ks - (ks < ke) * ng, ku = ke + (ks < ke) * ng;
+
+  for (int k = kl; k <= ku; ++k)
+    for (int j = jl; j <= ju; ++j)
+    {
+      Real const th = mb->pcoord->x2v(j);
+      bool const in_band = (th > theta_min && th < theta_max);
+
+      for (int i = il; i <= iu; ++i)
+      {
+        Real const r = mb->pcoord->x1v(i);
+        Real const rho = u(IDN, k, j, i);
+
+        u_scalar(0, k, j, i) = 0.0;
+        u_scalar(1, k, j, i) = (r > 15.0  && in_band) ? rho : 0.0;
+        u_scalar(2, k, j, i) = (r > 22.5 && in_band) ? rho : 0.0;
+      }
+    }
+}
+
 void sc_all(
   MeshBlock *mb, Real t, Real dt, AthenaArray<Real> const &w,
   AthenaArray<Real> const &w_scalar, AthenaArray<Real> const &bcc,
   AthenaArray<Real> &u, AthenaArray<Real> &u_scalar)
 {
+  if (NSCALARS >= 3 && mb->pmy_mesh->ncycle == scalar_init_cycle)
+    init_scalars_once(mb, u_scalar, u);
+
   // only the first function can use the primitive variables
   sc_gravity(mb, t, dt, w, w_scalar, bcc, u, u_scalar);
   sc_stream (mb, t, dt, w, w_scalar, bcc, u, u_scalar);
@@ -779,6 +864,8 @@ void sc_stream(
           : stream_prim.dn * dt;
         
         u(IDN, k, j, i) += inject_dn;
+        if (NSCALARS > 0)
+          u_scalar(0, k, j, i) += inject_dn;
         u(IM1, k, j, i) -= inject_dn * stream_prim.v1;
         u(IM2, k, j, i) -= inject_dn * stream_prim.v2;
         u(IM3, k, j, i) -= inject_dn * stream_prim.v3;

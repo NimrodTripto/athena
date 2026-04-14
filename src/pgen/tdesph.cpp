@@ -21,6 +21,7 @@
 #include "../scalars/scalars.hpp"
 #include "../nr_radiation/radiation.hpp"
 #include "../parameter_input.hpp"
+#include "../restart_scalars_load.hpp"
 
 #include "pgenitrp.hpp"
 #include "pgenphys.hpp"
@@ -365,6 +366,13 @@ void Mesh::InitUserMeshData(ParameterInput *in)
   scalar_init_cycle = in->GetOrAddInteger("problem", "scalar_init_cycle", 6073330);
   scalar_theta_min  = in->GetReal("problem", "theta_min");
   scalar_theta_max  = in->GetReal("problem", "theta_max");
+#if NSCALARS > 0
+  for (int n = 0; n < NSCALARS; ++n) {
+    std::ostringstream name;
+    name << "scalar" << (n + 1) << "_exists";
+    rs_load_scalar[n] = in->GetOrAddBoolean("problem", name.str(), true);
+  }
+#endif
 
   EnrollUserExplicitSourceFunction(sc_all);
 

@@ -32,6 +32,7 @@
 #include "../fft/athena_fft.hpp"
 #include "../field/field.hpp"
 #include "../globals.hpp"
+#include "../restart_scalars_load.hpp"
 #include "../gravity/gravity.hpp"
 #include "../gravity/mg_gravity.hpp"
 #include "../hydro/hydro.hpp"
@@ -524,8 +525,17 @@ MeshBlock::MeshBlock(int igid, int ilid, Mesh *pm, ParameterInput *pin,
 
   // (conserved variable) Passive scalars:
   if (NSCALARS > 0) {
-    std::memcpy(pscalars->s.data(), &(mbdata[os]), pscalars->s.GetSizeInBytes());
-    os += pscalars->s.GetSizeInBytes();
+    std::size_t const scalar_total = pscalars->s.GetSizeInBytes();
+    std::size_t const slab = scalar_total / NSCALARS;
+    char *const sbase = reinterpret_cast<char *>(pscalars->s.data());
+    for (int n = 0; n < NSCALARS; ++n) {
+      if (rs_load_scalar[n]) {
+        std::memcpy(sbase + n*slab, &(mbdata[os]), slab);
+        os += slab;
+      } else {
+        std::memset(sbase + n*slab, 0, slab);
+      }
+    }
     if (CHEMISTRY_ENABLED) {
       std::memcpy(pscalars->h.data(), &(mbdata[os]), pscalars->h.GetSizeInBytes());
       os += pscalars->h.GetSizeInBytes();
@@ -729,6 +739,42 @@ std::size_t MeshBlock::GetBlockSizeInBytesGray() {
   for (int n=0; n<nreal_user_meshblock_data_; n++)
     size += ruser_meshblock_data[n].GetSizeInBytes();
 
+  return size;
+}
+
+
+//----------------------------------------------------------------------------------------
+//! \fn std::size_t MeshBlock::GetRestartBlockSizeInBytes()
+//! \brief Restart file size per block when optional scalar slabs may be omitted.
+
+std::size_t MeshBlock::GetRestartBlockSizeInBytes() {
+  std::size_t size = GetBlockSizeInBytes();
+#if NSCALARS > 0
+  std::size_t const scalar_total = pscalars->s.GetSizeInBytes();
+  std::size_t const slab = scalar_total / NSCALARS;
+  for (int n = 0; n < NSCALARS; ++n) {
+    if (!rs_load_scalar[n])
+      size -= slab;
+  }
+#endif
+  return size;
+}
+
+
+//----------------------------------------------------------------------------------------
+//! \fn std::size_t MeshBlock::GetRestartBlockSizeInBytesGray()
+//! \brief Same as GetRestartBlockSizeInBytes for gray radiation restart layout.
+
+std::size_t MeshBlock::GetRestartBlockSizeInBytesGray() {
+  std::size_t size = GetBlockSizeInBytesGray();
+#if NSCALARS > 0
+  std::size_t const scalar_total = pscalars->s.GetSizeInBytes();
+  std::size_t const slab = scalar_total / NSCALARS;
+  for (int n = 0; n < NSCALARS; ++n) {
+    if (!rs_load_scalar[n])
+      size -= slab;
+  }
+#endif
   return size;
 }
 

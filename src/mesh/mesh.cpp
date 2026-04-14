@@ -981,18 +981,32 @@ Mesh::Mesh(ParameterInput *pin, IOWrapper& resfile, int mesh_test) :
     if (i - gids_ < nbmin) {
       // load MeshBlock (parallel)
       if (resfile.Read_at_all(mbdata, datasize, 1, headeroffset+i*datasize) != 1) {
-        msg << "### FATAL ERROR in Mesh constructor" << std::endl
-            << "The restart file is broken or input parameters are inconsistent."
-            << std::endl;
-        ATHENA_ERROR(msg);
+        // msg << "### FATAL ERROR in Mesh constructor" << std::endl
+        //     << "The restart file is broken or input parameters are inconsistent."
+        //     << std::endl;
+        // ATHENA_ERROR(msg);
+        std::cout << "### Warning in Mesh constructor" << std::endl
+        << "MeshBlock restart read failed; meshblock sizes may not fit the restart file."
+        << " This might cause a problem (rank " << Globals::my_rank
+        << ", block " << i << ")." << std::endl;
+
+        // Avoid using stale data in mbdata for this MeshBlock
+        std::memset(mbdata, 0, static_cast<std::size_t>(datasize));
       }
     } else {
       // load MeshBlock (serial)
       if (resfile.Read_at(mbdata, datasize, 1, headeroffset+i*datasize) != 1) {
-        msg << "### FATAL ERROR in Mesh constructor" << std::endl
-            << "The restart file is broken or input parameters are inconsistent."
-            << std::endl;
-        ATHENA_ERROR(msg);
+        // msg << "### FATAL ERROR in Mesh constructor" << std::endl
+        //     << "The restart file is broken or input parameters are inconsistent."
+        //     << std::endl;
+        // ATHENA_ERROR(msg);
+        std::cout << "### Warning in Mesh constructor" << std::endl
+        << "MeshBlock restart read failed; meshblock sizes may not fit the restart file."
+        << " This might cause a problem (rank " << Globals::my_rank
+        << ", block " << i << ")." << std::endl;
+
+        // Avoid using stale data in mbdata for this MeshBlock
+        std::memset(mbdata, 0, static_cast<std::size_t>(datasize));
       }
     }
     // Match fixed-width integer precision of IOWrapperSizeT datasize
@@ -1005,14 +1019,14 @@ Mesh::Mesh(ParameterInput *pin, IOWrapper& resfile, int mesh_test) :
   // check consistency
   if ( (NR_RADIATION_ENABLED || IM_RADIATION_ENABLED) &&
                     my_blocks(0)->pnrrad->restart_from_gray > 0) {
-    if (datasize != my_blocks(0)->GetBlockSizeInBytesGray()) {
+    if (datasize != my_blocks(0)->GetRestartBlockSizeInBytesGray()) {
         msg << "### FATAL ERROR in Mesh constructor" << std::endl
             << "The restart file is broken or input parameters are inconsistent."
             << std::endl;
         ATHENA_ERROR(msg);
     }
   } else {
-    if (datasize != my_blocks(0)->GetBlockSizeInBytes()) {
+    if (datasize != my_blocks(0)->GetRestartBlockSizeInBytes()) {
         msg << "### FATAL ERROR in Mesh constructor" << std::endl
             << "The restart file is broken or input parameters are inconsistent."
             << std::endl;

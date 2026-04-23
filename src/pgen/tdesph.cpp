@@ -754,18 +754,14 @@ void init_scalars_once(MeshBlock *mb, AthenaArray<Real> &u_scalar,
   int const is = mb->is, ie = mb->ie;
   int const js = mb->js, je = mb->je;
   int const ks = mb->ks, ke = mb->ke;
-  int const ng = NGHOST;
-  int const il = is - (is < ie) * ng, iu = ie + (is < ie) * ng;
-  int const jl = js - (js < je) * ng, ju = je + (js < je) * ng;
-  int const kl = ks - (ks < ke) * ng, ku = ke + (ks < ke) * ng;
 
-  for (int k = kl; k <= ku; ++k)
-    for (int j = jl; j <= ju; ++j)
+  for (int k = ks; k <= ke; ++k)
+    for (int j = js; j <= je; ++j)
     {
       Real const th = mb->pcoord->x2v(j);
       bool const in_band = (th > theta_min && th < theta_max);
 
-      for (int i = il; i <= iu; ++i)
+      for (int i = is; i <= ie; ++i)
       {
         Real const r = mb->pcoord->x1v(i);
         Real const rho = u(IDN, k, j, i);
@@ -804,17 +800,13 @@ void sc_gravity(
   AthenaArray<Real> const &w_scalar, AthenaArray<Real> const &bcc,
   AthenaArray<Real> &u, AthenaArray<Real> &u_scalar)
 {
-  int const ng = NGHOST;
   int const is = mb->is, ie = mb->ie;
   int const js = mb->js, je = mb->je;
   int const ks = mb->ks, ke = mb->ke;
-  int const il = is-(is<ie)*ng, iu = ie+(is<ie)*ng;
-  int const jl = js-(js<je)*ng, ju = je+(js<je)*ng;
-  int const kl = ks-(ks<ke)*ng, ku = ke+(ks<ke)*ng;
 
-  for (int k = kl; k <= ku; ++k)
-    for (int j = jl; j <= ju; ++j)
-      for (int i = il; i <= iu; ++i)
+  for (int k = ks; k <= ke; ++k)
+    for (int j = js; j <= je; ++j)
+      for (int i = is; i <= ie; ++i)
       {
         Real const x1 = mb->pcoord->x1v(i);
         Real const x2 = mb->pcoord->x2v(j);
@@ -852,19 +844,15 @@ void sc_stream(
 {
   if (stream != nullptr)
   {
-  int const ng = NGHOST;
-  int const is = mb->is, ie = mb->ie;
-  int const js = mb->js, je = mb->je;
-  int const ks = mb->ks, ke = mb->ke;
-    int const il = is-(is<ie)*ng, iu = ie+(is<ie)*ng;
-    int const jl = js-(js<je)*ng, ju = je+(js<je)*ng;
-    int const kl = ks-(ks<ke)*ng, ku = ke+(ks<ke)*ng;
+    int const is = mb->is, ie = mb->ie;
+    int const js = mb->js, je = mb->je;
+    int const ks = mb->ks, ke = mb->ke;
 
   Real const igm1 = 1 / (mb->peos->GetGamma() - 1);
 
-    for (int k = kl; k <= ku; ++k)
-      for (int j = jl; j <= ju; ++j)
-      for (int i = il; i <= iu; ++i)
+    for (int k = ks; k <= ke; ++k)
+      for (int j = js; j <= je; ++j)
+      for (int i = is; i <= ie; ++i)
       {
         Real const x1 = mb->pcoord->x1v(i);
         Real const x2 = mb->pcoord->x2v(j);

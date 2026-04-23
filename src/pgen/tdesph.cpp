@@ -782,8 +782,17 @@ void sc_all(
   AthenaArray<Real> const &w_scalar, AthenaArray<Real> const &bcc,
   AthenaArray<Real> &u, AthenaArray<Real> &u_scalar)
 {
-  if (NSCALARS >= 3 && mb->pmy_mesh->ncycle == scalar_init_cycle)
-    init_scalars_once(mb, u_scalar, u);
+  if (NSCALARS >= 3) {
+    // scalar_init_cycle semantics:
+    //  -1: never initialize scalars
+    //   1: initialize every cycle
+    //  >1: initialize exactly on that cycle number
+    if (scalar_init_cycle == 1) {
+      init_scalars_once(mb, u_scalar, u);
+    } else if (scalar_init_cycle > 1 && mb->pmy_mesh->ncycle == scalar_init_cycle) {
+      init_scalars_once(mb, u_scalar, u);
+    }
+  }
 
   // only the first function can use the primitive variables
   sc_gravity(mb, t, dt, w, w_scalar, bcc, u, u_scalar);
